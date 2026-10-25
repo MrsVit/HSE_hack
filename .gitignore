@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+ENV/
+.env
+
+*.zip
+*.tar.gz
+*.rar
+*.csv
+TextileClass-7/
+# Временные файлы и загрузки
+uploads/*
+!uploads/.gitkeep
+
+# IDE и ОС
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Jupyter / Checkpoints (если появятся)
+.ipynb_checkpoints/
+*.ckpt
+
+# Логи
+*.log

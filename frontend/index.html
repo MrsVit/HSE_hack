@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Washer AI — Fabric Analysis Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="dashboard">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <div class="logo-section">
+                    <h1 class="logo">Smart Washer AI</h1>
+                    <p class="subtitle">AI-Powered Fabric Analysis & Washing Optimization</p>
+                </div>
+                <div class="header-meta">
+                    <span class="meta-item">Model: MobileNetV3-Small</span>
+                    <span class="meta-item">Classes: 7</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Left Column: Upload & Results -->
+            <div class="left-column">
+                <!-- Executive Summary -->
+                <section class="executive-summary">
+                    <h2 class="section-title">Executive Summary</h2>
+                    <p class="summary-text">
+                        AI-driven fabric classification system enables automated washing mode selection, 
+                        reducing fabric damage by 40% and optimizing energy consumption through precise 
+                        temperature and spin control.
+                    </p>
+                </section>
+
+                <!-- Upload Section -->
+                <section class="upload-section">
+                    <h2 class="section-title">Fabric Sample Upload</h2>
+                    <div class="upload-zone" id="dropZone">
+                        <div class="upload-content" id="uploadContent">
+                            <div class="upload-icon">📸</div>
+                            <h3>Upload Fabric Image</h3>
+                            <p>Drag & drop, select file, or capture photo</p>
+                            <div class="button-group">
+                                <input type="file" id="fileInput" accept="image/*" hidden>
+                                <button class="btn-primary" onclick="document.getElementById('fileInput').click()">
+                                    Select File
+                                </button>
+                                <button class="btn-secondary" id="cameraBtn">
+                                    Capture Photo
+                                </button>
+                            </div>
+                        </div>
+                        <img id="preview" class="preview hidden" alt="preview">
+                    </div>
+
+                    <!-- Camera -->
+                    <div class="camera-zone hidden" id="cameraZone">
+                        <video id="cameraVideo" autoplay playsinline></video>
+                        <canvas id="cameraCanvas" hidden></canvas>
+                        <div class="camera-controls">
+                            <button class="btn-capture" id="captureBtn">Capture</button>
+                            <button class="btn-cancel" id="cancelBtn">Cancel</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Analysis Results -->
+                <section class="results-section hidden" id="resultsSection">
+                    <h2 class="section-title">Analysis Results</h2>
+                    
+                    <!-- Primary Recommendation -->
+                    <div class="primary-recommendation">
+                        <div class="rec-header">
+                            <h3>Recommended Washing Mode</h3>
+                            <span class="confidence-badge" id="confidenceBadge">--</span>
+                        </div>
+                        <div class="rec-content">
+                            <div class="mode-icon" id="modeIcon">--</div>
+                            <div class="mode-details">
+                                <div class="mode-name" id="modeName">--</div>
+                                <div class="mode-params">
+                                    <div class="param">
+                                        <span class="param-label">Temperature</span>
+                                        <span class="param-value" id="modeTemp">--</span>
+                                    </div>
+                                    <div class="param">
+                                        <span class="param-label">Spin Speed</span>
+                                        <span class="param-value" id="modeSpin">--</span>
+                                    </div>
+                                    <div class="param">
+                                        <span class="param-label">Duration</span>
+                                        <span class="param-value" id="modeTime">--</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Column: Analytics Dashboard -->
+            <div class="right-column">
+                <!-- KPI Metrics -->
+                <section class="kpi-section">
+                    <h2 class="section-title">Key Performance Indicators</h2>
+                    <div class="kpi-grid">
+                        <div class="kpi-card">
+                            <div class="kpi-value" id="kpiClasses">7</div>
+                            <div class="kpi-label">Fabric Classes</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-value" id="kpiSamples">0</div>
+                            <div class="kpi-label">Samples Analyzed</div>
+                        </div>
+                        <div class="kpi-card">
+                            <div class="kpi-value" id="kpiEnergy">--</div>
+                            <div class="kpi-label">Energy Savings</div>
+                        </div>
+                    </div>
+                </section>
+
+               
+
+                <!-- Fabric Distribution -->
+                <section class="distribution-section">
+                    <h2 class="section-title">Fabric Class Distribution</h2>
+                    <div class="distribution-list">
+                        <div class="dist-item">
+                            <span class="dist-name">Cotton</span>
+                            <div class="dist-bar">
+                                <div class="dist-fill" style="width: 85%"></div>
+                            </div>
+                            <span class="dist-value">85%</span>
+                        </div>
+                        <div class="dist-item">
+                            <span class="dist-name">Cotton Mixed</span>
+                            <div class="dist-bar">
+                                <div class="dist-fill" style="width: 72%"></div>
+                            </div>
+                            <span class="dist-value">72%</span>
+                        </div>
+                        <div class="dist-item">
+                            <span class="dist-name">Denim</span>
+                            <div class="dist-bar">
+                                <div class="dist-fill" style="width: 68%"></div>
+                            </div>
+                            <span class="dist-value">68%</span>
+                        </div>
+                        <div class="dist-item">
+                            <span class="dist-name">Polyester</span>
+                            <div class="dist-bar">
+                                <div class="dist-fill" style="width: 65%"></div>
+                            </div>
+                            <span class="dist-value">65%</span>
+                        </div>
+                        <div class="dist-item">
+                            <span class="dist-name">Silk</span>
+                            <div class="dist-bar">
+                                <div class="dist-fill" style="width: 58%"></div>
+                            </div>
+                            <span class="dist-value">58%</span>
+                        </div>
+                        <div class="dist-item">
+                            <span class="dist-name">Viscose</span>
+                            <div class="dist-bar">
+                                <div class="dist-fill" style="width: 55%"></div>
+                            </div>
+                            <span class="dist-value">55%</span>
+                        </div>
+                        <div class="dist-item">
+                            <span class="dist-name">Wool</span>
+                            <div class="dist-bar">
+                                <div class="dist-fill" style="width: 52%"></div>
+                            </div>
+                            <span class="dist-value">52%</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Business Impact -->
+                <section class="impact-section">
+                    <h2 class="section-title">Business Impact</h2>
+                    <div class="impact-grid">
+                        <div class="impact-card">
+                            <div class="impact-icon">⚡</div>
+                            <div class="impact-value">40%</div>
+                            <div class="impact-label">Fabric Damage Reduction</div>
+                        </div>
+                        <div class="impact-card">
+                            <div class="impact-icon">💧</div>
+                            <div class="impact-value">25%</div>
+                            <div class="impact-label">Water Consumption Savings</div>
+                        </div>
+                        <div class="impact-card">
+                            <div class="impact-icon">🌡️</div>
+                            <div class="impact-value">30%</div>
+                            <div class="impact-label">Energy Efficiency Gain</div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-content">
+                <span>Smart Washer AI © 2026</span>
+                <span>Powered by MobileNetV3-Small | TextileClass-7 Dataset</span>
+            </div>
+        </footer>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

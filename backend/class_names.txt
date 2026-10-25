@@ -1,0 +1,7 @@
+Cotton
+Cotton Mixed
+Denim
+Polyester
+Silk
+Viscose
+Wool
