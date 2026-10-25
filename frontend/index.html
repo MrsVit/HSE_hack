@@ -18,7 +18,6 @@
                 <div class="header-meta">
                     <span class="meta-item" id="metaModel">Model: MobileNetV3-Large</span>
                     <span class="meta-item" id="metaFeatures">Features: Fabric + Color + Video</span>
-                    
                 </div>
             </div>
         </header>
@@ -31,9 +30,9 @@
                 <section class="executive-summary">
                     <h2 class="section-title">Executive Summary</h2>
                     <p class="summary-text">
-                        Multi-modal AI system combining <b>fabric classification</b> (MobileNetV3-Large), 
-                        <b>color safety analysis</b> (CIE Lab k-means) and <b>video frame extraction</b> 
-                        (Laplacian sharpness). Reduces fabric damage risk by 40%, prevents color bleeding, 
+                        Multi-modal AI system combining <b>fabric classification</b> (MobileNetV3-Large, TTA),
+                        <b>color safety analysis</b> (CIE Lab k-means) and <b>video frame extraction</b>
+                        (Laplacian sharpness). Reduces fabric damage risk by 40%, prevents color bleeding,
                         and enables robust analysis from rotating drum footage.
                     </p>
                 </section>
@@ -45,14 +44,14 @@
                         <div class="upload-content" id="uploadContent">
                             <div class="upload-icon">📸</div>
                             <h3>Upload Photo or Video</h3>
-                            <p>Drag & drop, select file, or capture photo. Video extracts the 5 sharpest frames automatically.</p>
+                            <p>Drag &amp; drop, select file, or capture photo/record video. Video extracts the 5 sharpest frames automatically.</p>
                             <div class="button-group">
                                 <input type="file" id="fileInput" accept="image/*,video/*" hidden>
                                 <button class="btn-primary" onclick="document.getElementById('fileInput').click()">
-                                     Select File
+                                    Select File
                                 </button>
                                 <button class="btn-secondary" id="cameraBtn">
-                                    📷 Capture Photo
+                                    📷 Open Camera
                                 </button>
                             </div>
                         </div>
@@ -62,10 +61,11 @@
 
                     <!-- Camera -->
                     <div class="camera-zone hidden" id="cameraZone">
-                        <video id="cameraVideo" autoplay playsinline></video>
+                        <video id="cameraVideo" autoplay playsinline muted></video>
                         <canvas id="cameraCanvas" hidden></canvas>
                         <div class="camera-controls">
-                            <button class="btn-capture" id="captureBtn">Capture</button>
+                            <button class="btn-capture" id="captureBtn">📸 Capture Photo</button>
+                            <button class="btn-record" id="recordBtn">🔴 Start Recording</button>
                             <button class="btn-cancel" id="cancelBtn">Cancel</button>
                         </div>
                     </div>
@@ -78,9 +78,9 @@
                     <!-- Media Info Badge -->
                     <div class="media-info hidden" id="mediaInfo">
                         <span class="media-badge" id="mediaBadge">📷 Photo</span>
-                        
+                        <span class="frames-count" id="framesCount"></span>
                     </div>
-                    
+
                     <!-- Primary Recommendation -->
                     <div class="primary-recommendation">
                         <div class="rec-header">
@@ -91,6 +91,7 @@
                             <div class="mode-icon" id="modeIcon">--</div>
                             <div class="mode-details">
                                 <div class="mode-name" id="modeName">--</div>
+                                <div class="mode-basis hidden" id="modeBasis"></div>
                                 <div class="mode-params">
                                     <div class="param">
                                         <span class="param-label">Temperature</span>
@@ -107,9 +108,22 @@
                                 </div>
                             </div>
                         </div>
+                        <div class="low-conf-warning hidden" id="lowConfWarning">
+                            ⚠️ Low confidence — the mode is set to the safest plausible option.
+                        </div>
                     </div>
 
-                    
+                    <!-- Adjustments -->
+                    <div class="adjustments hidden" id="adjustmentsBlock">
+                        <h3>Automatic Mode Adjustments</h3>
+                        <div class="adjustments-list" id="adjustmentsList"></div>
+                    </div>
+
+                    <!-- Mixed Load -->
+                    <div class="mixed-load hidden" id="mixedLoadBlock">
+                        <h3>Mixed Load Detected</h3>
+                        <div class="mixed-fabrics-list" id="mixedFabricsList"></div>
+                    </div>
 
                     <!-- Color Analysis -->
                     <div class="color-analysis hidden" id="colorAnalysis">
@@ -122,7 +136,7 @@
                             <div class="color-score" id="colorScore">Score: --</div>
                         </div>
                         <div class="color-message" id="colorMessage"></div>
-                        
+
                         <div class="palette-section">
                             <h4>Detected Color Palette</h4>
                             <div class="palette-grid" id="paletteGrid"></div>
@@ -134,13 +148,11 @@
                         </div>
                     </div>
 
-                    
                 </section>
             </div>
 
             <!-- Right Column -->
             <div class="right-column">
-
                 <!-- Confidence Chart -->
                 <section class="chart-section hidden" id="chartSection">
                     <h2 class="section-title">Classification Confidence Distribution</h2>
@@ -148,9 +160,6 @@
                         <div id="confidenceChart"></div>
                     </div>
                 </section>
-
-
-                
             </div>
         </main>
 

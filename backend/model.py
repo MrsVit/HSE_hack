@@ -1,152 +1,86 @@
+# backend/model.py
 import os
+from typing import Dict, List
+import numpy as np
 import torch
 import torch.nn as nn
-from torchvision import models, transforms
+from torchvision import models
 from PIL import Image
-from typing import Dict, List
 
-def normalize_name(name: str) -> str:
-    """Приводим имя класса к каноничному виду: 'Cotton MIxed' -> 'Cotton Mixed'"""
-    name = name.replace("_", " ").strip()
-    name = name.replace("MIxed", "Mixed")
-    return " ".join(w.capitalize() for w in name.split())
+# Импорт того, что нужно
+from washing import normalize_name, profile_for
+
+class WeightsMissing(RuntimeError):
+    pass
 
 class FabricClassifier:
     def __init__(self):
-        print("🧠 Загружаю MobileNetV3-Large (TextileClass-7)...")
+        print("🧠 Загружаю классификатор ткани...")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
         
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(base_dir, "fabric_model_best.pth")
-        classes_path = os.path.join(base_dir, "class_names.txt")
+        self.model_path = os.path.join(base_dir, "fabric_model_best.pth")
         
-        # 1. Имена классов
-        if os.path.exists(classes_path):
-            with open(classes_path, "r", encoding="utf-8") as f:
-                raw_names = [line.strip() for line in f if line.strip()]
-        else:
-            raw_names = ["Cotton", "Cotton Mixed", "Denim", "Polyester", "Silk", "Viscose", "Wool"]
+        if not os.path.exists(self.model_path):
+            raise WeightsMissing(f"Нет файла весов {self.model_path}. Запусти train.py")
             
-        self.class_names = [normalize_name(n) for n in raw_names]
+        ckpt = torch.load(self.model_path, map_location=self.device, weights_only=True)
         
-        # 2. Загружаем checkpoint ДО создания модели, чтобы узнать arch
-        checkpoint = None
-        if os.path.exists(model_path):
-            checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
-            ckpt_classes = checkpoint.get("class_names", raw_names)
-            self.class_names = [normalize_name(n) for n in ckpt_classes]
-            arch = checkpoint.get("arch", "mobilenet_v3_large")
-        else:
-            print("⚠️ Файл fabric_model_best.pth не найден! Сначала запусти train.py")
-            arch = "mobilenet_v3_large"
-            
-        # 3. Архитектура: MobileNetV3-Large (вход 960)
-        if arch == "mobilenet_v3_large":
-            self.model = models.mobilenet_v3_large(weights=None)
-            num_features = self.model.classifier[0].in_features  # 960
-            print("   Архитектура: MobileNetV3-Large")
-        else:
-            # Fallback на Small, если вдруг старый checkpoint
-            self.model = models.mobilenet_v3_small(weights=None)
-            num_features = self.model.classifier[0].in_features  # 576
-            print("   Архитектура: MobileNetV3-Small (fallback)")
-            
+        # Берем классы из чекпоинта
+        ckpt_classes = ckpt.get("class_names", [])
+        self.class_names = [normalize_name(c) for c in ckpt_classes]
+        self.title = f"mobilenet_v3_large (TextileClass-{len(self.class_names)})"
+        
+        # --- ТОЧНО КАК В TRAIN.PY ---
+        self.model = models.mobilenet_v3_large(weights=None) # без предобучения, т.к. загрузим свои
+        num_features = self.model.classifier[0].in_features
         self.model.classifier = nn.Sequential(
             nn.Dropout(0.2),
             nn.Linear(num_features, len(self.class_names)),
         )
+        # -----------------------------
         
-        # 4. Веса
-        if checkpoint is not None:
-            self.model.load_state_dict(checkpoint["model_state_dict"])
-            val_acc = checkpoint.get("val_acc", 0)
-            print(f"✅ Веса загружены! (Val Acc: {val_acc:.2f}%)")
+        try:
+            self.model.load_state_dict(ckpt["model_state_dict"])
+        except Exception as e:
+            raise WeightsMissing(f"Ошибка загрузки весов: {e}")
             
-        self.model.to(self.device)
-        self.model.eval()
-        
-        # 5. Трансформации
-        self.transform = transforms.Compose([
+        self.model.to(self.device).eval()
+        self.img_size = 224 # В train.py используется 224
+        self.temperature = 1.0
+
+    @torch.no_grad()
+    def predict(self, images: List[Image.Image], fast: bool = False) -> np.ndarray:
+        from torchvision import transforms
+        # Простой трансформ, как в train.py
+        tf = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ])
         
-        # 6. Профили стирки
-        self.washing_profiles = {
-            "Cotton":       {"temp": 60, "spin": 1000, "time": 90, "name": "Хлопок",           "icon": "👕"},
-            "Cotton Mixed": {"temp": 40, "spin": 800,  "time": 75, "name": "Смешанный хлопок", "icon": "👔"},
-            "Denim":        {"temp": 30, "spin": 800,  "time": 75, "name": "Джинса",           "icon": "👖"},
-            "Polyester":    {"temp": 40, "spin": 800,  "time": 60, "name": "Полиэстер",        "icon": "👚"},
-            "Silk":         {"temp": 30, "spin": 400,  "time": 30, "name": "Шёлк",             "icon": "👘"},
-            "Viscose":      {"temp": 30, "spin": 600,  "time": 45, "name": "Вискоза",          "icon": "👗"},
-            "Wool":         {"temp": 30, "spin": 0,    "time": 45, "name": "Шерсть",           "icon": "🧶"},
-        }
-        print("✅ Модель готова к анализу!")
+        batch = torch.stack([tf(img.convert("RGB")) for img in images]).to(self.device)
+        logits = self.model(batch)
+        probs = torch.softmax(logits, dim=1).cpu().numpy()
+        
+        # Возвращаем (N_frames, 1, C_classes) - 1 "регион" (весь кадр)
+        return probs[:, None, :]
 
     def analyze(self, images: List[Image.Image]) -> Dict:
-        """Принимает список кадров, усредняет предсказания для максимальной точности."""
-        tensors = [self.transform(im.convert("RGB")).unsqueeze(0).to(self.device) for im in images]
-        batch = torch.cat(tensors, dim=0)
-        
-        with torch.no_grad():
-            outputs = self.model(batch)
-            # Усредняем вероятности по всем кадрам (dim=0)
-            probs = torch.softmax(outputs, dim=1).mean(dim=0)
-            confidence, predicted_idx = torch.max(probs, 0)
-            
-        fabric_name = self.class_names[predicted_idx.item()]
-        conf_percent = round(float(confidence) * 100, 2)
-        
-        all_probs = []
-        for i, prob in enumerate(probs):
-            conf = round(float(prob) * 100, 2)
-            if conf > 1.0:
-                cls_name = self.class_names[i]
-                profile = self.washing_profiles.get(cls_name, {
-                    "temp": 30, "spin": 400, "time": 45, "name": cls_name, "icon": "❓",
-                })
-                all_probs.append({"fabric": cls_name, "confidence": conf, "profile": profile})
-                
-        all_probs.sort(key=lambda x: x["confidence"], reverse=True)
-        
-        profile = self.washing_profiles.get(fabric_name, {
-            "temp": 30, "spin": 400, "time": 45, "name": fabric_name, "icon": "❓",
-        })
-        
-        mixed_load = len(all_probs) > 1 and all_probs[1]["confidence"] > 15
+        # Оставил на случай, если main.py вызывает напрямую
+        probs = self.predict(images)
+        mean = probs.mean((0, 1))
+        order = np.argsort(-mean)
+        top_name = self.class_names[int(order[0])]
+        conf = round(float(mean[order[0]]) * 100, 2)
         
         return {
-            "detected_fabrics": all_probs[:3],
-            "recommended_mode": profile,
-            "mixed_load_warning": mixed_load,
-            "tips": self._generate_tips(fabric_name, mixed_load, conf_percent),
+            "detected_fabrics": [{"fabric": top_name, "confidence": conf, "profile": profile_for(top_name)}],
+            "recommended_mode": profile_for(top_name),
+            "confidence": conf,
+            "mixed_load_warning": False,
+            "tips": ["✨ Стандартная стирка."]
         }
-
-    def _generate_tips(self, fabric: str, mixed_load: bool, confidence: float) -> List[str]:
-        tips = []
-        if confidence < 50:
-            tips.append("⚠️ Низкая уверенность модели. Рекомендуется безопасный режим (30°C).")
-        if mixed_load:
-            tips.append("⚠️ Обнаружена смешанная загрузка. Режим адаптирован под самую нежную ткань.")
-        if fabric == "Denim":
-            tips.append("🎨 Возможна линька. Стирайте отдельно или с похожими цветами.")
-            tips.append("💡 Выверните наизнанку для сохранения цвета.")
-        elif fabric == "Silk":
-            tips.append("🧺 Рекомендуется использовать специальный мешок для стирки.")
-            tips.append("🚫 Не используйте отжим на высоких оборотах.")
-        elif fabric == "Wool":
-            tips.append("💡 Используйте мешок для стирки, чтобы избежать усадки.")
-            tips.append("🧴 Не используйте обычный стиральный порошок (только для шерсти).")
-        elif fabric == "Viscose":
-            tips.append("💡 Стирайте при низкой температуре, ткань боится горячей воды.")
-        elif fabric == "Polyester":
-            tips.append("✨ Быстро сохнет и почти не мнётся. Можно не гладить.")
-        elif fabric in ("Cotton", "Cotton Mixed"):
-            tips.append("✨ Прочная натуральная ткань. Отлично переносит стандартный режим.")
-        if not tips:
-            tips.append("✨ Стандартная стирка, всё под контролем!")
-        return tips
 
 _classifier = None
 def get_classifier() -> FabricClassifier:
