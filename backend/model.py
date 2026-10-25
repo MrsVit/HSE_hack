@@ -1,4 +1,3 @@
-# backend/model.py
 import os
 import torch
 import torch.nn as nn
@@ -6,77 +5,73 @@ from torchvision import models, transforms
 from PIL import Image
 from typing import Dict, List
 
-
-def _normalize_name(name: str) -> str:
-    """'Cotton_Mixed' / 'Cotton MIxed' / 'cotton mixed' -> 'Cotton Mixed'"""
+def normalize_name(name: str) -> str:
+    """Приводим имя класса к каноничному виду: 'Cotton MIxed' -> 'Cotton Mixed'"""
     name = name.replace("_", " ").strip()
     name = name.replace("MIxed", "Mixed")
     return " ".join(w.capitalize() for w in name.split())
-
 
 class FabricClassifier:
     def __init__(self):
         print("🧠 Загружаю MobileNetV3-Large (TextileClass-7)...")
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-
+        
         base_dir = os.path.dirname(os.path.abspath(__file__))
         model_path = os.path.join(base_dir, "fabric_model_best.pth")
         classes_path = os.path.join(base_dir, "class_names.txt")
-
+        
         # 1. Имена классов
         if os.path.exists(classes_path):
             with open(classes_path, "r", encoding="utf-8") as f:
                 raw_names = [line.strip() for line in f if line.strip()]
         else:
-            raw_names = [
-                "Cotton", "Cotton Mixed", "Denim",
-                "Polyester", "Silk", "Viscose", "Wool",
-            ]
-        self.class_names = [_normalize_name(n) for n in raw_names]
-
-        # 2. Загружаем checkpoint ДО создания модели — чтобы узнать arch
+            raw_names = ["Cotton", "Cotton Mixed", "Denim", "Polyester", "Silk", "Viscose", "Wool"]
+            
+        self.class_names = [normalize_name(n) for n in raw_names]
+        
+        # 2. Загружаем checkpoint ДО создания модели, чтобы узнать arch
         checkpoint = None
         if os.path.exists(model_path):
-            checkpoint = torch.load(model_path, map_location=self.device)
+            checkpoint = torch.load(model_path, map_location=self.device, weights_only=True)
             ckpt_classes = checkpoint.get("class_names", raw_names)
-            self.class_names = [_normalize_name(n) for n in ckpt_classes]
-            arch = checkpoint.get("arch", "mobilenet_v3_large")  # дефолт — Large
+            self.class_names = [normalize_name(n) for n in ckpt_classes]
+            arch = checkpoint.get("arch", "mobilenet_v3_large")
         else:
-            print("⚠️  Файл fabric_model_best.pth не найден! Сначала запусти train.py")
+            print("⚠️ Файл fabric_model_best.pth не найден! Сначала запусти train.py")
             arch = "mobilenet_v3_large"
-
-        # 3. Архитектура — Large (совпадает с train.py)
+            
+        # 3. Архитектура: MobileNetV3-Large (вход 960)
         if arch == "mobilenet_v3_large":
-            self.model = models.mobilenet_v3_large()
-            num_features = self.model.classifier[0].in_features   # 960
+            self.model = models.mobilenet_v3_large(weights=None)
+            num_features = self.model.classifier[0].in_features  # 960
             print("   Архитектура: MobileNetV3-Large")
         else:
-            # fallback на Small, если вдруг старый checkpoint
-            self.model = models.mobilenet_v3_small()
-            num_features = self.model.classifier[0].in_features   # 576
+            # Fallback на Small, если вдруг старый checkpoint
+            self.model = models.mobilenet_v3_small(weights=None)
+            num_features = self.model.classifier[0].in_features  # 576
             print("   Архитектура: MobileNetV3-Small (fallback)")
-
+            
         self.model.classifier = nn.Sequential(
             nn.Dropout(0.2),
             nn.Linear(num_features, len(self.class_names)),
         )
-
+        
         # 4. Веса
         if checkpoint is not None:
             self.model.load_state_dict(checkpoint["model_state_dict"])
             val_acc = checkpoint.get("val_acc", 0)
             print(f"✅ Веса загружены! (Val Acc: {val_acc:.2f}%)")
-
+            
         self.model.to(self.device)
         self.model.eval()
-
-        # 5. Трансформации — как в train.py (val)
+        
+        # 5. Трансформации
         self.transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         ])
-
+        
         # 6. Профили стирки
         self.washing_profiles = {
             "Cotton":       {"temp": 60, "spin": 1000, "time": 90, "name": "Хлопок",           "icon": "👕"},
@@ -87,44 +82,40 @@ class FabricClassifier:
             "Viscose":      {"temp": 30, "spin": 600,  "time": 45, "name": "Вискоза",          "icon": "👗"},
             "Wool":         {"temp": 30, "spin": 0,    "time": 45, "name": "Шерсть",           "icon": "🧶"},
         }
-
         print("✅ Модель готова к анализу!")
 
-    def analyze(self, image_path: str) -> Dict:
-        image = Image.open(image_path).convert("RGB")
-        tensor = self.transform(image).unsqueeze(0).to(self.device)
-
+    def analyze(self, images: List[Image.Image]) -> Dict:
+        """Принимает список кадров, усредняет предсказания для максимальной точности."""
+        tensors = [self.transform(im.convert("RGB")).unsqueeze(0).to(self.device) for im in images]
+        batch = torch.cat(tensors, dim=0)
+        
         with torch.no_grad():
-            outputs = self.model(tensor)
-            probs = torch.softmax(outputs, dim=1)[0]
+            outputs = self.model(batch)
+            # Усредняем вероятности по всем кадрам (dim=0)
+            probs = torch.softmax(outputs, dim=1).mean(dim=0)
             confidence, predicted_idx = torch.max(probs, 0)
-
+            
         fabric_name = self.class_names[predicted_idx.item()]
         conf_percent = round(float(confidence) * 100, 2)
-
+        
         all_probs = []
         for i, prob in enumerate(probs):
             conf = round(float(prob) * 100, 2)
             if conf > 1.0:
                 cls_name = self.class_names[i]
                 profile = self.washing_profiles.get(cls_name, {
-                    "temp": 30, "spin": 400, "time": 45,
-                    "name": cls_name, "icon": "❓",
+                    "temp": 30, "spin": 400, "time": 45, "name": cls_name, "icon": "❓",
                 })
-                all_probs.append({
-                    "fabric": cls_name,
-                    "confidence": conf,
-                    "profile": profile,
-                })
+                all_probs.append({"fabric": cls_name, "confidence": conf, "profile": profile})
+                
         all_probs.sort(key=lambda x: x["confidence"], reverse=True)
-
+        
         profile = self.washing_profiles.get(fabric_name, {
-            "temp": 30, "spin": 400, "time": 45,
-            "name": fabric_name, "icon": "❓",
+            "temp": 30, "spin": 400, "time": 45, "name": fabric_name, "icon": "❓",
         })
-
+        
         mixed_load = len(all_probs) > 1 and all_probs[1]["confidence"] > 15
-
+        
         return {
             "detected_fabrics": all_probs[:3],
             "recommended_mode": profile,
@@ -138,7 +129,6 @@ class FabricClassifier:
             tips.append("⚠️ Низкая уверенность модели. Рекомендуется безопасный режим (30°C).")
         if mixed_load:
             tips.append("⚠️ Обнаружена смешанная загрузка. Режим адаптирован под самую нежную ткань.")
-
         if fabric == "Denim":
             tips.append("🎨 Возможна линька. Стирайте отдельно или с похожими цветами.")
             tips.append("💡 Выверните наизнанку для сохранения цвета.")
@@ -154,15 +144,11 @@ class FabricClassifier:
             tips.append("✨ Быстро сохнет и почти не мнётся. Можно не гладить.")
         elif fabric in ("Cotton", "Cotton Mixed"):
             tips.append("✨ Прочная натуральная ткань. Отлично переносит стандартный режим.")
-
         if not tips:
             tips.append("✨ Стандартная стирка, всё под контролем!")
         return tips
 
-
 _classifier = None
-
-
 def get_classifier() -> FabricClassifier:
     global _classifier
     if _classifier is None:
